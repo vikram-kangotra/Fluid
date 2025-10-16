@@ -1,5 +1,3 @@
-use sdl2::libc::{FAN_REPORT_DFID_NAME, NFT_REJECT_ICMPX_PORT_UNREACH};
-
 pub struct FluidCube {
     size: usize,
 
