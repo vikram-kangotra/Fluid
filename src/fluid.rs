@@ -21,11 +21,13 @@ pub struct Fluid {
 
     pub ux: Grid,
     pub uy: Grid,
+
+    obstacle: Grid,
 }
 
 impl Fluid {
     pub fn new(n: usize, diff: f32, visc: f32, dt: f32) -> Self {
-        Self {
+        let mut fluid = Self {
             dt,
             diff,
             visc,
@@ -38,21 +40,47 @@ impl Fluid {
 
             ux: Grid::new(n, 0.0),
             uy: Grid::new(n, 0.0),
+
+            obstacle: Grid::new(n, 0.0),
+        };
+
+        fluid.add_circular_obstacle();
+        fluid
+    }
+
+    fn add_circular_obstacle(&mut self) {
+        let cx = self.obstacle.n as f32 / 2.0;
+        let cy = self.obstacle.n as f32 / 2.0;
+        let radius = 5.0;
+        let r2 = radius * radius;
+
+        for y in 0..self.obstacle.n {
+            for x in 0..self.obstacle.n {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                if dx*dx + dy*dy <= r2 {
+                    self.obstacle.set(x, y, 1.0);
+                }
+            }
         }
     }
 
     /// Add density at grid cell (x,y)
     pub fn add_density(&mut self, x: usize, y: usize, amount: f32) {
-        let val = self.density.get(x, y);
-        self.density.set(x, y, val + amount);
+        if self.obstacle.get(x, y) == 0.0 {
+            let val = self.density.get(x, y);
+            self.density.set(x, y, val + amount);
+        }
     }
 
     /// Add velocity component at grid cell (x,y)
     pub fn add_velocity(&mut self, x: usize, y: usize, amountx: f32, amounty: f32) {
-        let vx = self.vx.get(x, y);
-        self.vx.set(x, y, vx + amountx);
-        let vy = self.vy.get(x, y);
-        self.vy.set(x, y, vy + amounty);
+        if self.obstacle.get(x, y) == 0.0 {
+            let vx = self.vx.get(x, y);
+            self.vx.set(x, y, vx + amountx);
+            let vy = self.vy.get(x, y);
+            self.vy.set(x, y, vy + amounty);
+        }
     }
 
     /// Advance simulation by one timestep (iter = Gauss-Seidel iterations for solvers)
@@ -68,6 +96,21 @@ impl Fluid {
 
         diffuse(BoundType::Scalar, &mut self.s, &self.density, self.diff, self.dt, iter);
         advect(BoundType::Scalar, &mut self.density, &self.s, &self.vx, &self.vy, self.dt);
+
+        self.apply_obstacle();
+    }
+
+    fn apply_obstacle(&mut self) {
+        let n = self.obstacle.n;
+        for y in 0..n {
+            for x in 0..n {
+                if self.obstacle.get(x, y) == 1.0 {
+                    self.vx.set(x, y, 0.0);
+                    self.vy.set(x, y, 0.0);
+                    self.density.set(x, y, 0.0);
+                }
+            }
+        }
     }
 }
 
@@ -127,7 +170,8 @@ fn lin_solve(b: BoundType, x: &mut Grid, x0: &Grid, a: f32, c: f32, iter: usize)
 fn diffuse(b: BoundType, x: &mut Grid, x0: &Grid, diff: f32, dt: f32, iter: usize) {
     let n = x.n;
     let a = dt * diff * ((n - 2) * (n - 2)) as f32;
-    lin_solve(b, x, x0, a, 1.0 + 4.0 * a, iter);
+    lin_solve(b, x, x0, a, 1.0 + 6.0 * a, iter); // delibrately set to 6.0 so that the smoke
+                                                    // vanishes after some time
 }
 
 /// Semi-Lagrangian advection with bilinear interpolation.
